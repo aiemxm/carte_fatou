@@ -4,9 +4,9 @@
 function initMap() {
     const map = L.map('map').setView([43.6045, 1.4442], 12);
 
-    // Ajout du fond de carte OpenStreetMap
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    // Ajout du fond de carte OpenStreetMap France (pas de restriction referer)
+    L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles by <a href="https://openstreetmap.fr">OSM France</a>'
     }).addTo(map);
 
     // Création d'un groupe de marqueurs avec clustering
