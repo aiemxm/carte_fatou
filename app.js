@@ -4,6 +4,10 @@
 let allMarkers = [];
 let currentFilter = '';
 
+// Configuration Overpass API pour les arrêts de transport
+const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const TRANSPORT_RADIUS = 300; // Rayon en mètres pour chercher les arrêts
+
 // Initialisation de la carte
 function initMap() {
     const map = L.map('map').setView([43.6045, 1.4442], 12);
@@ -87,27 +91,116 @@ function processFeatures(features, markers) {
             const lat = coords[1];
             const lng = coords[0];
             
-            // Création du contenu du popup
-            const popupContent = createPopupContent(props);
-            
-            // Création du marqueur avec une icône personnalisée
-            const marker = L.marker([lat, lng], {
-                title: props.nom || 'Point d\'intérêt',
-                icon: createCustomIcon(props),
-                properties: props,
-                feature: feature
-            }).bindPopup(popupContent);
+            // Récupérer les arrêts de transport à proximité
+            fetchNearbyStops(lat, lng).then(transportInfo => {
+                // Ajouter les infos de transport aux propriétés
+                props.transport = transportInfo;
+                
+                // Création du contenu du popup
+                const popupContent = createPopupContent(props);
+                
+                // Création du marqueur avec une icône personnalisée
+                const marker = L.marker([lat, lng], {
+                    title: props.nom || 'Point d\'intérêt',
+                    icon: createCustomIcon(props),
+                    properties: props,
+                    feature: feature
+                }).bindPopup(popupContent);
 
-            // Stocker le marqueur et ses propriétés
-            allMarkers.push({
-                marker: marker,
-                properties: props,
-                layer: marker
+                // Stocker le marqueur et ses propriétés
+                allMarkers.push({
+                    marker: marker,
+                    properties: props,
+                    layer: marker
+                });
+
+                markers.addLayer(marker);
+            }).catch(error => {
+                console.error('Erreur lors de la récupération des arrêts:', error);
+                // Créer le marqueur sans les infos de transport
+                const popupContent = createPopupContent(props);
+                const marker = L.marker([lat, lng], {
+                    title: props.nom || 'Point d\'intérêt',
+                    icon: createCustomIcon(props),
+                    properties: props,
+                    feature: feature
+                }).bindPopup(popupContent);
+
+                allMarkers.push({
+                    marker: marker,
+                    properties: props,
+                    layer: marker
+                });
+
+                markers.addLayer(marker);
             });
-
-            markers.addLayer(marker);
         }
     });
+}
+
+// Récupère les arrêts de transport à proximité via Overpass API
+function fetchNearbyStops(lat, lng) {
+    const query = `
+        [out:json];
+        (
+            node["highway"="bus_stop"](around:${TRANSPORT_RADIUS},${lat},${lng});
+            node["railway"="tram_stop"](around:${TRANSPORT_RADIUS},${lat},${lng});
+            node["railway"="station"]["subway"="yes"](around:${TRANSPORT_RADIUS},${lat},${lng});
+            way["highway"="bus_stop"](around:${TRANSPORT_RADIUS},${lat},${lng});
+            way["railway"="tram_stop"](around:${TRANSPORT_RADIUS},${lat},${lng});
+            way["railway"="station"]["subway"="yes"](around:${TRANSPORT_RADIUS},${lat},${lng});
+        );
+        out center;
+        >;
+        out qt;
+    `;
+    
+    return fetch(OVERPASS_URL + '?data=' + encodeURIComponent(query))
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Erreur Overpass API');
+            }
+            return response.json();
+        })
+        .then(data => {
+            const stops = [];
+            const lines = new Set();
+            
+            // Extraire les lignes de transport
+            if (data.elements) {
+                data.elements.forEach(element => {
+                    if (element.tags) {
+                        // Bus
+                        if (element.tags.bus) {
+                            lines.add('Bus ' + element.tags.bus);
+                        }
+                        if (element.tags['bus:ref']) {
+                            lines.add('Bus ' + element.tags['bus:ref']);
+                        }
+                        // Tram
+                        if (element.tags.tram) {
+                            lines.add('Tram ' + element.tags.tram);
+                        }
+                        // Métro
+                        if (element.tags.subway) {
+                            lines.add('Métro ' + element.tags.subway);
+                        }
+                        if (element.tags['subway:ref']) {
+                            lines.add('Métro ' + element.tags['subway:ref']);
+                        }
+                        // Nom de l'arrêt
+                        if (element.tags.name) {
+                            stops.push(element.tags.name);
+                        }
+                    }
+                });
+            }
+            
+            return {
+                stops: [...new Set(stops)].slice(0, 5), // Max 5 arrêts
+                lines: Array.from(lines).sort().slice(0, 10) // Max 10 lignes
+            };
+        });
 }
 
 // Initialise les filtres
@@ -148,7 +241,7 @@ function applyFilter(markers) {
         const props = item.properties;
         const reseaux = props.reseaux_porteurs || [];
         
-        // Vérifier si au moins un terme de filtre correspond
+        // Vérifier si au moins un terme de filtre correspond exactement
         const matches = filterTerms.some(term => {
             return reseaux.some(r => r && r.toLowerCase() === term);
         });
@@ -207,6 +300,18 @@ function createPopupContent(props) {
     
     if (props.reseaux_porteurs && props.reseaux_porteurs.length > 0) {
         content += `<p style="margin: 5px 0;"><strong>Réseaux porteurs:</strong> ${escapeHtml(props.reseaux_porteurs.join(', '))}</p>`;
+    }
+    
+    // Ajouter les informations de transport si disponibles
+    if (props.transport && (props.transport.lines.length > 0 || props.transport.stops.length > 0)) {
+        content += `<p style="margin: 5px 0;"><strong>Transports à proximité:</strong> `;
+        if (props.transport.lines.length > 0) {
+            content += escapeHtml(props.transport.lines.join(', '));
+        }
+        if (props.transport.stops.length > 0 && props.transport.lines.length === 0) {
+            content += escapeHtml(props.transport.stops.join(', '));
+        }
+        content += `</p>`;
     }
     
     if (props.description) {
