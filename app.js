@@ -4,14 +4,6 @@
 let allMarkers = [];
 let currentFilter = '';
 
-// Configuration pour l'API Tisseo
-const TISSEO_API_KEY = '46cb1cc7-907c-4d9a-a39a-00f4be153433';
-const TISSEO_API_URL = 'https://api.tisseo.fr/v2';
-const TRANSPORT_RADIUS = 300; // Rayon en mètres
-
-// Cache pour les requêtes de transport (éviter les doublons)
-const transportCache = new Map();
-
 // Initialisation de la carte
 function initMap() {
     const map = L.map('map').setView([43.6045, 1.4442], 12);
@@ -80,7 +72,6 @@ function loadGeoJSONData(map, markers) {
 
 // Traite chaque feature et crée les marqueurs
 function processFeatures(features, markers) {
-    // D'abord créer tous les marqueurs sans attendre les infos de transport
     features.forEach(feature => {
         const props = feature.properties;
         
@@ -109,160 +100,12 @@ function processFeatures(features, markers) {
             allMarkers.push({
                 marker: marker,
                 properties: props,
-                layer: marker,
-                lat: lat,
-                lng: lng
+                layer: marker
             });
 
             markers.addLayer(marker);
         }
     });
-    
-    // Ensuite, charger les infos de transport pour chaque marqueur
-    // On limite à 5 requêtes simultanées pour éviter de surcharger l'API
-    let requestCount = 0;
-    const maxSimultaneousRequests = 5;
-    
-    function loadTransportForMarker(index) {
-        if (index >= allMarkers.length) return;
-        
-        const item = allMarkers[index];
-        
-        // Vérifier si on a déjà les infos en cache
-        const cacheKey = `${item.lat.toFixed(4)},${item.lng.toFixed(4)}`;
-        if (transportCache.has(cacheKey)) {
-            item.properties.transport = transportCache.get(cacheKey);
-            const popupContent = createPopupContent(item.properties);
-            item.marker.setPopupContent(popupContent);
-            
-            // Passer au suivant
-            if (index + 1 < allMarkers.length) {
-                loadTransportForMarker(index + 1);
-            }
-            return;
-        }
-        
-        requestCount++;
-        
-        fetchNearbyStops(item.lat, item.lng)
-            .then(transportInfo => {
-                // Mettre en cache
-                transportCache.set(cacheKey, transportInfo);
-                
-                item.properties.transport = transportInfo;
-                // Mettre à jour le popup avec les infos de transport
-                const popupContent = createPopupContent(item.properties);
-                item.marker.setPopupContent(popupContent);
-            })
-            .catch(error => {
-                console.error('Erreur transport pour', item.properties.nom, ':', error);
-            })
-            .finally(() => {
-                requestCount--;
-                // Passer au suivant
-                if (index + 1 < allMarkers.length && requestCount < maxSimultaneousRequests) {
-                    loadTransportForMarker(index + 1);
-                }
-            });
-        
-        // Lancer la prochaine requête si possible
-        if (requestCount < maxSimultaneousRequests) {
-            setTimeout(() => loadTransportForMarker(index + 1), 100);
-        }
-    }
-    
-    // Démarrer le chargement des infos de transport
-    if (allMarkers.length > 0) {
-        loadTransportForMarker(0);
-    }
-}
-
-// Récupère les arrêts de transport à proximité via l'API Tisseo (requête directe)
-function fetchNearbyStops(lat, lng) {
-    const url = `${TISSEO_API_URL}/stop_points.json?key=${TISSEO_API_KEY}&lat=${lat}&lon=${lng}&distance=${TRANSPORT_RADIUS}`;
-    
-    return fetch(url, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        mode: 'cors' // Explicite pour CORS
-    })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Erreur API Tisseo: ' + response.status);
-            }
-            return response.json();
-        })
-        .then(data => {
-            const lines = new Set();
-            const stops = new Set();
-            
-            // Extraire les informations de transport
-            if (data.physicalStops && data.physicalStops.physicalStop) {
-                data.physicalStops.physicalStop.forEach(stop => {
-                    // Ajouter le nom de l'arrêt
-                    if (stop.name) {
-                        stops.add(stop.name);
-                    }
-                    
-                    // Ajouter les lignes (en filtrant les codes internes)
-                    if (stop.lines) {
-                        stop.lines.forEach(line => {
-                            if (line && line.short_name) {
-                                const lineName = line.short_name.trim();
-                                // Filtrer les codes internes (comme CHAUM3, NAVES2, etc.)
-                                if (isValidLineName(lineName)) {
-                                    lines.add(lineName);
-                                }
-                            }
-                        });
-                    }
-                });
-            }
-            
-            return {
-                stops: Array.from(stops).slice(0, 5), // Max 5 arrêts
-                lines: Array.from(lines).sort().slice(0, 10) // Max 10 lignes
-            };
-        })
-        .catch(error => {
-            console.error('Erreur API Tisseo:', error);
-            // Retourner des données vides en cas d'erreur
-            return { stops: [], lines: [] };
-        });
-}
-
-// Vérifie si un nom de ligne est valide (pas un code interne)
-function isValidLineName(lineName) {
-    // Garder les lignes numériques (1-999)
-    if (/^[0-9]{1,3}$/.test(lineName)) {
-        return true;
-    }
-    
-    // Garder les lettres simples (A, B, C, etc.)
-    if (/^[A-Z]$/.test(lineName)) {
-        return true;
-    }
-    
-    // Garder les lignes de type L1, L2, ..., L20
-    if (/^L[0-9]{1,2}$/.test(lineName)) {
-        return true;
-    }
-    
-    // Garder les lignes de type T1, T2 (tram)
-    if (/^T[0-9]$/.test(lineName)) {
-        return true;
-    }
-    
-    // Garder les lignes spéciales connues
-    const specialLines = ['AERO', 'DIRECT', 'NFEN', 'CIMTR'];
-    if (specialLines.includes(lineName)) {
-        return true;
-    }
-    
-    return false;
 }
 
 // Initialise les filtres
@@ -362,13 +205,6 @@ function createPopupContent(props) {
     
     if (props.reseaux_porteurs && props.reseaux_porteurs.length > 0) {
         content += `<p style="margin: 5px 0;"><strong>Réseaux porteurs:</strong> ${escapeHtml(props.reseaux_porteurs.join(', '))}</p>`;
-    }
-    
-    // Ajouter les informations de transport si disponibles
-    if (props.transport && props.transport.lines.length > 0) {
-        content += `<p style="margin: 5px 0;"><strong>Lignes à proximité:</strong> ${escapeHtml(props.transport.lines.join(', '))}</p>`;
-    } else if (props.transport && props.transport.stops.length > 0) {
-        content += `<p style="margin: 5px 0;"><strong>Arrêts à proximité:</strong> ${escapeHtml(props.transport.stops.join(', '))}</p>`;
     }
     
     if (props.description) {
