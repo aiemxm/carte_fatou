@@ -9,6 +9,9 @@ const TISSEO_API_KEY = '46cb1cc7-907c-4d9a-a39a-00f4be153433';
 const TISSEO_API_URL = 'http://api.tisseo.fr/v2';
 const TRANSPORT_RADIUS = 300; // Rayon en mètres
 
+// Cache pour les requêtes de transport (éviter les doublons)
+const transportCache = new Map();
+
 // Initialisation de la carte
 function initMap() {
     const map = L.map('map').setView([43.6045, 1.4442], 12);
@@ -124,10 +127,28 @@ function processFeatures(features, markers) {
         if (index >= allMarkers.length) return;
         
         const item = allMarkers[index];
+        
+        // Vérifier si on a déjà les infos en cache
+        const cacheKey = `${item.lat.toFixed(4)},${item.lng.toFixed(4)}`;
+        if (transportCache.has(cacheKey)) {
+            item.properties.transport = transportCache.get(cacheKey);
+            const popupContent = createPopupContent(item.properties);
+            item.marker.setPopupContent(popupContent);
+            
+            // Passer au suivant
+            if (index + 1 < allMarkers.length) {
+                loadTransportForMarker(index + 1);
+            }
+            return;
+        }
+        
         requestCount++;
         
         fetchNearbyStops(item.lat, item.lng)
             .then(transportInfo => {
+                // Mettre en cache
+                transportCache.set(cacheKey, transportInfo);
+                
                 item.properties.transport = transportInfo;
                 // Mettre à jour le popup avec les infos de transport
                 const popupContent = createPopupContent(item.properties);
@@ -158,9 +179,7 @@ function processFeatures(features, markers) {
 
 // Récupère les arrêts de transport à proximité via l'API Tisseo
 function fetchNearbyStops(lat, lng) {
-    // Utiliser l'API Tisseo avec la clé fournie
-    // On utilise stops_schedules.json qui semble fonctionner
-    const url = `${TISSEO_API_URL}/stops_schedules.json?key=${TISSEO_API_KEY}&lat=${lat}&lon=${lng}&distance=${TRANSPORT_RADIUS}`;
+    const url = `${TISSEO_API_URL}/stop_points.json?key=${TISSEO_API_KEY}&lat=${lat}&lon=${lng}&distance=${TRANSPORT_RADIUS}`;
     
     return fetch(url)
         .then(response => {
@@ -174,43 +193,32 @@ function fetchNearbyStops(lat, lng) {
             const stops = new Set();
             
             // Extraire les informations de transport
-            if (data.departures) {
-                Object.entries(data.departures).forEach(([stopId, stopData]) => {
-                    if (stopData && stopData.lines) {
-                        Object.entries(stopData.lines).forEach(([lineId, lineInfo]) => {
-                            if (lineInfo && lineInfo.name) {
-                                lines.add(lineInfo.name);
-                            }
-                            if (lineInfo && lineInfo.shortName) {
-                                lines.add(lineInfo.shortName);
+            if (data.physicalStops && data.physicalStops.physicalStop) {
+                data.physicalStops.physicalStop.forEach(stop => {
+                    // Ajouter le nom de l'arrêt
+                    if (stop.name) {
+                        stops.add(stop.name);
+                    }
+                    
+                    // Ajouter les lignes (en filtrant les codes internes)
+                    if (stop.lines) {
+                        stop.lines.forEach(line => {
+                            if (line && line.short_name) {
+                                const lineName = line.short_name.trim();
+                                // Filtrer les codes internes (comme CHAUM3, NAVES2, etc.)
+                                // On garde : les numéros, les lettres simples, L1-L20, T1-T2, A-B
+                                if (isValidLineName(lineName)) {
+                                    lines.add(lineName);
+                                }
                             }
                         });
-                    }
-                    if (stopData && stopData.name) {
-                        stops.add(stopData.name);
                     }
                 });
             }
             
-            // Si on n'a pas trouvé d'infos, essayer une autre approche
-            if (lines.size === 0 && stops.size === 0) {
-                // Essayer de parser différemment
-                if (data.stops) {
-                    data.stops.forEach(stop => {
-                        if (stop.name) stops.add(stop.name);
-                        if (stop.lines) {
-                            stop.lines.forEach(line => {
-                                if (line.name) lines.add(line.name);
-                                if (line.shortName) lines.add(line.shortName);
-                            });
-                        }
-                    });
-                }
-            }
-            
             return {
-                stops: Array.from(stops).slice(0, 5),
-                lines: Array.from(lines).slice(0, 10)
+                stops: Array.from(stops).slice(0, 5), // Max 5 arrêts
+                lines: Array.from(lines).sort().slice(0, 10) // Max 10 lignes
             };
         })
         .catch(error => {
@@ -218,6 +226,37 @@ function fetchNearbyStops(lat, lng) {
             // Retourner des données vides en cas d'erreur
             return { stops: [], lines: [] };
         });
+}
+
+// Vérifie si un nom de ligne est valide (pas un code interne)
+function isValidLineName(lineName) {
+    // Garder les lignes numériques (1-999)
+    if (/^[0-9]{1,3}$/.test(lineName)) {
+        return true;
+    }
+    
+    // Garder les lettres simples (A, B, C, etc.)
+    if (/^[A-Z]$/.test(lineName)) {
+        return true;
+    }
+    
+    // Garder les lignes de type L1, L2, ..., L20
+    if (/^L[0-9]{1,2}$/.test(lineName)) {
+        return true;
+    }
+    
+    // Garder les lignes de type T1, T2 (tram)
+    if (/^T[0-9]$/.test(lineName)) {
+        return true;
+    }
+    
+    // Garder les lignes spéciales connues
+    const specialLines = ['AERO', 'DIRECT', 'NFEN', 'CIMTR'];
+    if (specialLines.includes(lineName)) {
+        return true;
+    }
+    
+    return false;
 }
 
 // Initialise les filtres
@@ -320,14 +359,10 @@ function createPopupContent(props) {
     }
     
     // Ajouter les informations de transport si disponibles
-    if (props.transport && (props.transport.lines.length > 0 || props.transport.stops.length > 0)) {
-        content += `<p style="margin: 5px 0;"><strong>Lignes à proximité:</strong> `;
-        if (props.transport.lines.length > 0) {
-            content += escapeHtml(props.transport.lines.join(', '));
-        } else if (props.transport.stops.length > 0) {
-            content += escapeHtml(props.transport.stops.join(', '));
-        }
-        content += `</p>`;
+    if (props.transport && props.transport.lines.length > 0) {
+        content += `<p style="margin: 5px 0;"><strong>Lignes à proximité:</strong> ${escapeHtml(props.transport.lines.join(', '))}</p>`;
+    } else if (props.transport && props.transport.stops.length > 0) {
+        content += `<p style="margin: 5px 0;"><strong>Arrêts à proximité:</strong> ${escapeHtml(props.transport.stops.join(', '))}</p>`;
     }
     
     if (props.description) {
