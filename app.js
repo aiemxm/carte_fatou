@@ -150,7 +150,7 @@ function applyFilter(markers) {
         
         // Vérifier si au moins un terme de filtre correspond
         const matches = filterTerms.some(term => {
-            return reseaux.some(r => r && r.toLowerCase().includes(term));
+            return reseaux.some(r => r && r.toLowerCase() === term);
         });
         
         if (matches) {
