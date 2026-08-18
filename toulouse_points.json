@@ -7408,32 +7408,6 @@
   {
     "type": "Feature",
     "properties": {
-      "id": "mes-aides--recrvfu9Bx4Vt0g0a",
-      "siret": null,
-      "nom": "Norauto Gramont",
-      "commune": "Toulouse",
-      "code_postal": "31200",
-      "code_insee": "31555",
-      "adresse": "Centre commercial Auchan, 12 chemin de Gabardie",
-      "complement_adresse": null,
-      "longitude": null,
-      "latitude": null,
-      "telephone": "+33561619161",
-      "courriel": "contact@manaara.fr",
-      "site_web": "https://manaara.org/",
-      "description": null,
-      "source": "mes-aides",
-      "date_maj": "2025-02-07",
-      "lien_source": "https://mes-aides.francetravail.fr/transport/reparer-votre-vehicule/norauto-solidaire/norauto-gramont",
-      "horaires_accueil": null,
-      "accessibilite_lieu": null,
-      "reseaux_porteurs": null
-    },
-    "geometry": null
-  },
-  {
-    "type": "Feature",
-    "properties": {
       "id": "finess--310025234",
       "siret": null,
       "nom": "CMP ADULTE SSC ARENES NEGOGOUSSES TOULOUSE (DEODAT SEVERAC)",
@@ -7598,32 +7572,6 @@
         43.594338
       ]
     }
-  },
-  {
-    "type": "Feature",
-    "properties": {
-      "id": "mes-aides--recZ6oKllUPm263a1",
-      "siret": null,
-      "nom": "Norauto Toulouse Purpan",
-      "commune": "Toulouse",
-      "code_postal": "31000",
-      "code_insee": "31555",
-      "adresse": "39/41 Route de Bayonne",
-      "complement_adresse": null,
-      "longitude": null,
-      "latitude": null,
-      "telephone": "+33561493636",
-      "courriel": "contact@manaara.fr",
-      "site_web": "https://manaara.org/",
-      "description": null,
-      "source": "mes-aides",
-      "date_maj": "2025-02-07",
-      "lien_source": "https://mes-aides.francetravail.fr/transport/reparer-votre-vehicule/norauto-solidaire/norauto-toulouse-purpan",
-      "horaires_accueil": null,
-      "accessibilite_lieu": null,
-      "reseaux_porteurs": null
-    },
-    "geometry": null
   },
   {
     "type": "Feature",

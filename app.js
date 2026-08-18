@@ -64,6 +64,13 @@ function loadGeoJSONData(map, markers) {
 function processFeatures(features, markers) {
     features.forEach(feature => {
         const props = feature.properties;
+        
+        // Vérification que geometry existe et a des coordinates
+        if (!feature.geometry || !feature.geometry.coordinates) {
+            console.warn('Feature sans geometry valide:', props.nom || props.id);
+            return;
+        }
+        
         const coords = feature.geometry.coordinates;
         
         if (coords && coords.length >= 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
