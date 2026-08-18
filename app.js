@@ -6,7 +6,7 @@ let currentFilter = '';
 
 // Configuration pour l'API Tisseo
 const TISSEO_API_KEY = '46cb1cc7-907c-4d9a-a39a-00f4be153433';
-const TISSEO_API_URL = 'http://api.tisseo.fr/v2';
+const TISSEO_API_URL = 'https://api.tisseo.fr/v2';
 const TRANSPORT_RADIUS = 300; // Rayon en mètres
 
 // Cache pour les requêtes de transport (éviter les doublons)
