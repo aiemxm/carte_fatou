@@ -4,9 +4,10 @@
 let allMarkers = [];
 let currentFilter = '';
 
-// Configuration Overpass API pour les arrêts de transport
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-const TRANSPORT_RADIUS = 300; // Rayon en mètres pour chercher les arrêts
+// Configuration pour l'API Tisseo
+const TISSEO_API_KEY = '46cb1cc7-907c-4d9a-a39a-00f4be153433';
+const TISSEO_API_URL = 'http://api.tisseo.fr/v2';
+const TRANSPORT_RADIUS = 300; // Rayon en mètres
 
 // Initialisation de la carte
 function initMap() {
@@ -76,6 +77,7 @@ function loadGeoJSONData(map, markers) {
 
 // Traite chaque feature et crée les marqueurs
 function processFeatures(features, markers) {
+    // D'abord créer tous les marqueurs sans attendre les infos de transport
     features.forEach(feature => {
         const props = feature.properties;
         
@@ -91,115 +93,130 @@ function processFeatures(features, markers) {
             const lat = coords[1];
             const lng = coords[0];
             
-            // Récupérer les arrêts de transport à proximité
-            fetchNearbyStops(lat, lng).then(transportInfo => {
-                // Ajouter les infos de transport aux propriétés
-                props.transport = transportInfo;
-                
-                // Création du contenu du popup
-                const popupContent = createPopupContent(props);
-                
-                // Création du marqueur avec une icône personnalisée
-                const marker = L.marker([lat, lng], {
-                    title: props.nom || 'Point d\'intérêt',
-                    icon: createCustomIcon(props),
-                    properties: props,
-                    feature: feature
-                }).bindPopup(popupContent);
+            // Créer le marqueur immédiatement
+            const popupContent = createPopupContent(props);
+            const marker = L.marker([lat, lng], {
+                title: props.nom || 'Point d\'intérêt',
+                icon: createCustomIcon(props),
+                properties: props,
+                feature: feature
+            }).bindPopup(popupContent);
 
-                // Stocker le marqueur et ses propriétés
-                allMarkers.push({
-                    marker: marker,
-                    properties: props,
-                    layer: marker
-                });
-
-                markers.addLayer(marker);
-            }).catch(error => {
-                console.error('Erreur lors de la récupération des arrêts:', error);
-                // Créer le marqueur sans les infos de transport
-                const popupContent = createPopupContent(props);
-                const marker = L.marker([lat, lng], {
-                    title: props.nom || 'Point d\'intérêt',
-                    icon: createCustomIcon(props),
-                    properties: props,
-                    feature: feature
-                }).bindPopup(popupContent);
-
-                allMarkers.push({
-                    marker: marker,
-                    properties: props,
-                    layer: marker
-                });
-
-                markers.addLayer(marker);
+            // Stocker le marqueur et ses propriétés
+            allMarkers.push({
+                marker: marker,
+                properties: props,
+                layer: marker,
+                lat: lat,
+                lng: lng
             });
+
+            markers.addLayer(marker);
         }
     });
+    
+    // Ensuite, charger les infos de transport pour chaque marqueur
+    // On limite à 5 requêtes simultanées pour éviter de surcharger l'API
+    let requestCount = 0;
+    const maxSimultaneousRequests = 5;
+    
+    function loadTransportForMarker(index) {
+        if (index >= allMarkers.length) return;
+        
+        const item = allMarkers[index];
+        requestCount++;
+        
+        fetchNearbyStops(item.lat, item.lng)
+            .then(transportInfo => {
+                item.properties.transport = transportInfo;
+                // Mettre à jour le popup avec les infos de transport
+                const popupContent = createPopupContent(item.properties);
+                item.marker.setPopupContent(popupContent);
+            })
+            .catch(error => {
+                console.error('Erreur transport pour', item.properties.nom, ':', error);
+            })
+            .finally(() => {
+                requestCount--;
+                // Passer au suivant
+                if (index + 1 < allMarkers.length && requestCount < maxSimultaneousRequests) {
+                    loadTransportForMarker(index + 1);
+                }
+            });
+        
+        // Lancer la prochaine requête si possible
+        if (requestCount < maxSimultaneousRequests) {
+            setTimeout(() => loadTransportForMarker(index + 1), 100);
+        }
+    }
+    
+    // Démarrer le chargement des infos de transport
+    if (allMarkers.length > 0) {
+        loadTransportForMarker(0);
+    }
 }
 
-// Récupère les arrêts de transport à proximité via Overpass API
+// Récupère les arrêts de transport à proximité via l'API Tisseo
 function fetchNearbyStops(lat, lng) {
-    const query = `
-        [out:json];
-        (
-            node["highway"="bus_stop"](around:${TRANSPORT_RADIUS},${lat},${lng});
-            node["railway"="tram_stop"](around:${TRANSPORT_RADIUS},${lat},${lng});
-            node["railway"="station"]["subway"="yes"](around:${TRANSPORT_RADIUS},${lat},${lng});
-            way["highway"="bus_stop"](around:${TRANSPORT_RADIUS},${lat},${lng});
-            way["railway"="tram_stop"](around:${TRANSPORT_RADIUS},${lat},${lng});
-            way["railway"="station"]["subway"="yes"](around:${TRANSPORT_RADIUS},${lat},${lng});
-        );
-        out center;
-        >;
-        out qt;
-    `;
+    // Utiliser l'API Tisseo avec la clé fournie
+    // On utilise stops_schedules.json qui semble fonctionner
+    const url = `${TISSEO_API_URL}/stops_schedules.json?key=${TISSEO_API_KEY}&lat=${lat}&lon=${lng}&distance=${TRANSPORT_RADIUS}`;
     
-    return fetch(OVERPASS_URL + '?data=' + encodeURIComponent(query))
+    return fetch(url)
         .then(response => {
             if (!response.ok) {
-                throw new Error('Erreur Overpass API');
+                throw new Error('Erreur API Tisseo: ' + response.status);
             }
             return response.json();
         })
         .then(data => {
-            const stops = [];
             const lines = new Set();
+            const stops = new Set();
             
-            // Extraire les lignes de transport
-            if (data.elements) {
-                data.elements.forEach(element => {
-                    if (element.tags) {
-                        // Bus
-                        if (element.tags.bus) {
-                            lines.add('Bus ' + element.tags.bus);
-                        }
-                        if (element.tags['bus:ref']) {
-                            lines.add('Bus ' + element.tags['bus:ref']);
-                        }
-                        // Tram
-                        if (element.tags.tram) {
-                            lines.add('Tram ' + element.tags.tram);
-                        }
-                        // Métro
-                        if (element.tags.subway) {
-                            lines.add('Métro ' + element.tags.subway);
-                        }
-                        if (element.tags['subway:ref']) {
-                            lines.add('Métro ' + element.tags['subway:ref']);
-                        }
-                        // Nom de l'arrêt
-                        if (element.tags.name) {
-                            stops.push(element.tags.name);
-                        }
+            // Extraire les informations de transport
+            if (data.departures) {
+                Object.entries(data.departures).forEach(([stopId, stopData]) => {
+                    if (stopData && stopData.lines) {
+                        Object.entries(stopData.lines).forEach(([lineId, lineInfo]) => {
+                            if (lineInfo && lineInfo.name) {
+                                lines.add(lineInfo.name);
+                            }
+                            if (lineInfo && lineInfo.shortName) {
+                                lines.add(lineInfo.shortName);
+                            }
+                        });
+                    }
+                    if (stopData && stopData.name) {
+                        stops.add(stopData.name);
                     }
                 });
             }
             
+            // Si on n'a pas trouvé d'infos, essayer une autre approche
+            if (lines.size === 0 && stops.size === 0) {
+                // Essayer de parser différemment
+                if (data.stops) {
+                    data.stops.forEach(stop => {
+                        if (stop.name) stops.add(stop.name);
+                        if (stop.lines) {
+                            stop.lines.forEach(line => {
+                                if (line.name) lines.add(line.name);
+                                if (line.shortName) lines.add(line.shortName);
+                            });
+                        }
+                    });
+                }
+            }
+            
             return {
-                stops: [...new Set(stops)].slice(0, 5), // Max 5 arrêts
-                lines: Array.from(lines).sort().slice(0, 10) // Max 10 lignes
+                stops: Array.from(stops).slice(0, 5),
+                lines: Array.from(lines).slice(0, 10)
             };
+        })
+        .catch(error => {
+            console.error('Erreur API Tisseo:', error);
+            // Retourner des données vides en cas d'erreur
+            return { stops: [], lines: [] };
         });
 }
 
@@ -304,11 +321,10 @@ function createPopupContent(props) {
     
     // Ajouter les informations de transport si disponibles
     if (props.transport && (props.transport.lines.length > 0 || props.transport.stops.length > 0)) {
-        content += `<p style="margin: 5px 0;"><strong>Transports à proximité:</strong> `;
+        content += `<p style="margin: 5px 0;"><strong>Lignes à proximité:</strong> `;
         if (props.transport.lines.length > 0) {
             content += escapeHtml(props.transport.lines.join(', '));
-        }
-        if (props.transport.stops.length > 0 && props.transport.lines.length === 0) {
+        } else if (props.transport.stops.length > 0) {
             content += escapeHtml(props.transport.stops.join(', '));
         }
         content += `</p>`;
