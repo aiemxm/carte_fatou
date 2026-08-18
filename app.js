@@ -9,13 +9,6 @@ const TISSEO_API_KEY = '46cb1cc7-907c-4d9a-a39a-00f4be153433';
 const TISSEO_API_URL = 'https://api.tisseo.fr/v2';
 const TRANSPORT_RADIUS = 300; // Rayon en mètres
 
-// Proxy CORS pour contourner les restrictions - Essayer plusieurs options
-const CORS_PROXIES = [
-    'https://api.allorigins.win/raw?url=',
-    'https://thingproxy.freeboard.io/fetch/'
-];
-let currentProxyIndex = 0;
-
 // Cache pour les requêtes de transport (éviter les doublons)
 const transportCache = new Map();
 
@@ -184,37 +177,24 @@ function processFeatures(features, markers) {
     }
 }
 
-// Récupère les arrêts de transport à proximité via l'API Tisseo avec proxy CORS
+// Récupère les arrêts de transport à proximité via l'API Tisseo (requête directe)
 function fetchNearbyStops(lat, lng) {
     const url = `${TISSEO_API_URL}/stop_points.json?key=${TISSEO_API_KEY}&lat=${lat}&lon=${lng}&distance=${TRANSPORT_RADIUS}`;
     
-    // Essayer les proxys un par un
-    function tryProxy(proxyIndex) {
-        if (proxyIndex >= CORS_PROXIES.length) {
-            throw new Error('Tous les proxys CORS ont échoué');
-        }
-        
-        const proxyUrl = CORS_PROXIES[proxyIndex] + encodeURIComponent(url);
-        
-        return fetch(proxyUrl, {
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
+    return fetch(url, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        mode: 'cors' // Explicite pour CORS
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Erreur API Tisseo: ' + response.status);
             }
+            return response.json();
         })
-            .then(response => {
-                if (!response.ok) {
-                    if (response.status === 403 || response.status === 429) {
-                        // Essayer le prochain proxy
-                        return tryProxy(proxyIndex + 1);
-                    }
-                    throw new Error('Erreur API Tisseo: ' + response.status);
-                }
-                return response.json();
-            });
-    }
-    
-    return tryProxy(0)
         .then(data => {
             const lines = new Set();
             const stops = new Set();
