@@ -9,6 +9,9 @@ const TISSEO_API_KEY = '46cb1cc7-907c-4d9a-a39a-00f4be153433';
 const TISSEO_API_URL = 'https://api.tisseo.fr/v2';
 const TRANSPORT_RADIUS = 300; // Rayon en mètres
 
+// Proxy CORS pour contourner les restrictions
+const CORS_PROXY = 'https://cors-anywhere.herokuapp.com/';
+
 // Cache pour les requêtes de transport (éviter les doublons)
 const transportCache = new Map();
 
@@ -177,11 +180,19 @@ function processFeatures(features, markers) {
     }
 }
 
-// Récupère les arrêts de transport à proximité via l'API Tisseo
+// Récupère les arrêts de transport à proximité via l'API Tisseo avec proxy CORS
 function fetchNearbyStops(lat, lng) {
     const url = `${TISSEO_API_URL}/stop_points.json?key=${TISSEO_API_KEY}&lat=${lat}&lon=${lng}&distance=${TRANSPORT_RADIUS}`;
     
-    return fetch(url)
+    // Utiliser le proxy CORS
+    const proxyUrl = CORS_PROXY + url;
+    
+    return fetch(proxyUrl, {
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        }
+    })
         .then(response => {
             if (!response.ok) {
                 throw new Error('Erreur API Tisseo: ' + response.status);
@@ -206,7 +217,6 @@ function fetchNearbyStops(lat, lng) {
                             if (line && line.short_name) {
                                 const lineName = line.short_name.trim();
                                 // Filtrer les codes internes (comme CHAUM3, NAVES2, etc.)
-                                // On garde : les numéros, les lettres simples, L1-L20, T1-T2, A-B
                                 if (isValidLineName(lineName)) {
                                     lines.add(lineName);
                                 }
