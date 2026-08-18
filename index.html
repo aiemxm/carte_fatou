@@ -18,6 +18,20 @@
 <body>
     <div id="map"></div>
     
+    <!-- Panneau de filtres -->
+    <div class="filter-panel">
+        <h3>Filtres</h3>
+        <div class="filter-group">
+            <label for="reseaux-filter">Rechercher par réseau porteur:</label>
+            <input type="text" id="reseaux-filter" placeholder="Ex: ei, etti, aci...">
+            <small class="hint">Séparer par des virgules pour plusieurs valeurs</small>
+        </div>
+        <div class="filter-stats">
+            <span id="total-count">0</span> points affichés sur <span id="all-count">0</span>
+        </div>
+        <button id="reset-filter" class="btn-reset">Réinitialiser</button>
+    </div>
+    
     <div class="legend">
         <h3>Points d'intérêt à Toulouse</h3>
         <p>Carte des structures d'inclusion et services sociaux</p>

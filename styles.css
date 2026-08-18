@@ -39,6 +39,93 @@ body {
     font-size: 14px;
 }
 
+/* Style du panneau de filtres */
+.filter-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    width: 300px;
+}
+
+.filter-panel h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+    font-size: 16px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 8px;
+}
+
+.filter-group {
+    margin-bottom: 15px;
+}
+
+.filter-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #444;
+    font-size: 14px;
+}
+
+.filter-group input[type="text"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.filter-group input[type="text"]:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.hint {
+    display: block;
+    margin-top: 5px;
+    color: #888;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.filter-stats {
+    margin: 10px 0;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 13px;
+    color: #555;
+}
+
+.filter-stats span {
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.btn-reset {
+    width: 100%;
+    padding: 8px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-reset:hover {
+    background: #c0392b;
+}
+
 /* Style des popups */
 .leaflet-popup-content {
     font-size: 14px;
@@ -101,12 +188,24 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
-    .legend {
-        max-width: 250px;
-        font-size: 13px;
+    .filter-panel {
+        width: 280px;
+        top: 10px;
+        left: 10px;
     }
     
-    .legend h3 {
+    .legend {
+        max-width: 250px;
+        bottom: 10px;
+        right: 10px;
+    }
+    
+    .legend h3,
+    .filter-panel h3 {
         font-size: 14px;
+    }
+    
+    .filter-group input[type="text"] {
+        font-size: 13px;
     }
 }

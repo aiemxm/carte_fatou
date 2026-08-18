@@ -1,5 +1,9 @@
 // Script principal pour la carte Leaflet
 
+// Variables globales
+let allMarkers = [];
+let currentFilter = '';
+
 // Initialisation de la carte
 function initMap() {
     const map = L.map('map').setView([43.6045, 1.4442], 12);
@@ -25,6 +29,9 @@ function initMap() {
 
     // Chargement des données GeoJSON
     loadGeoJSONData(map, markers);
+
+    // Initialisation des filtres
+    initFilters(map, markers);
 
     return map;
 }
@@ -53,6 +60,9 @@ function loadGeoJSONData(map, markers) {
             if (markers.getLayers().length > 0) {
                 map.fitBounds(markers.getBounds(), { padding: [50, 50] });
             }
+            
+            // Mise à jour des statistiques
+            updateFilterStats(allMarkers.length, allMarkers.length);
         })
         .catch(error => {
             console.error('Erreur:', error);
@@ -83,12 +93,88 @@ function processFeatures(features, markers) {
             // Création du marqueur avec une icône personnalisée
             const marker = L.marker([lat, lng], {
                 title: props.nom || 'Point d\'intérêt',
-                icon: createCustomIcon(props)
+                icon: createCustomIcon(props),
+                properties: props,
+                feature: feature
             }).bindPopup(popupContent);
+
+            // Stocker le marqueur et ses propriétés
+            allMarkers.push({
+                marker: marker,
+                properties: props,
+                layer: marker
+            });
 
             markers.addLayer(marker);
         }
     });
+}
+
+// Initialise les filtres
+function initFilters(map, markers) {
+    const filterInput = document.getElementById('reseaux-filter');
+    const resetBtn = document.getElementById('reset-filter');
+    
+    // Écouteur pour le champ de recherche
+    filterInput.addEventListener('input', function() {
+        currentFilter = this.value.toLowerCase().trim();
+        applyFilter(markers);
+    });
+    
+    // Écouteur pour le bouton de réinitialisation
+    resetBtn.addEventListener('click', function() {
+        filterInput.value = '';
+        currentFilter = '';
+        applyFilter(markers);
+    });
+}
+
+// Applique le filtre aux marqueurs
+function applyFilter(markers) {
+    const filterTerms = currentFilter.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    
+    if (filterTerms.length === 0) {
+        // Aucun filtre, tout afficher
+        allMarkers.forEach(item => {
+            markers.addLayer(item.marker);
+        });
+        updateFilterStats(allMarkers.length, allMarkers.length);
+        return;
+    }
+    
+    // Filtrer les marqueurs
+    let visibleCount = 0;
+    allMarkers.forEach(item => {
+        const props = item.properties;
+        const reseaux = props.reseaux_porteurs || [];
+        
+        // Vérifier si au moins un terme de filtre correspond
+        const matches = filterTerms.some(term => {
+            return reseaux.some(r => r && r.toLowerCase().includes(term));
+        });
+        
+        if (matches) {
+            markers.addLayer(item.marker);
+            visibleCount++;
+        } else {
+            markers.removeLayer(item.marker);
+        }
+    });
+    
+    // Mise à jour des statistiques
+    updateFilterStats(visibleCount, allMarkers.length);
+    
+    // Rafraîchir les clusters
+    markers.refreshClusters();
+}
+
+// Met à jour les statistiques de filtre
+function updateFilterStats(visible, total) {
+    const visibleEl = document.getElementById('total-count');
+    const totalEl = document.getElementById('all-count');
+    
+    if (visibleEl) visibleEl.textContent = visible;
+    if (totalEl) totalEl.textContent = total;
 }
 
 // Crée le contenu du popup
@@ -117,6 +203,10 @@ function createPopupContent(props) {
     
     if (props.site_web) {
         content += `<p style="margin: 5px 0;"><strong>Site web:</strong> <a href="${escapeHtml(props.site_web)}" target="_blank">${escapeHtml(props.site_web)}</a></p>`;
+    }
+    
+    if (props.reseaux_porteurs && props.reseaux_porteurs.length > 0) {
+        content += `<p style="margin: 5px 0;"><strong>Réseaux porteurs:</strong> ${escapeHtml(props.reseaux_porteurs.join(', '))}</p>`;
     }
     
     if (props.description) {
